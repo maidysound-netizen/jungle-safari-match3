@@ -104,8 +104,9 @@ const COCONUT_FUSE = 10;        // 코코넛 폭탄이 터지기까지 남은 �
 const COCONUT_WARNING = 3;      // 이 이하로 남으면 빨갛게 깜빡임
 
 // ===== 소리 / 효과 설정 =====
-// 1) 소리 크기: 슬라이더 처음 위치 (0~100)
-const VOLUME_DEFAULT = 80;
+// 1) 소리 크기: 슬라이더 처음 위치 (0~100). 음악과 효과음을 따로 조절
+const VOLUME_DEFAULT = 80;      // 효과음
+const MUSIC_VOLUME_DEFAULT = 80; // 음악
 // 2) 연쇄 문구: [번호]연쇄일 때 나오는 말 (0번은 안 씀, 마지막 말이 그 이상 연쇄에 계속 쓰임)
 const COMBO_WORDS = ["", "Nice!", "Great!", "Awesome!!", "Insane!!!", "Legendary!!!"];
 // 3) 터지는 조각: 개수 = 기본 + 연쇄 x 추가, 거리(px) = 기본 + 연쇄 x 추가
@@ -167,8 +168,8 @@ const jungleBg = document.getElementById("jungle-bg");
 const boardWrap = document.getElementById("board-wrap");
 const fxLayer = document.getElementById("fx-layer");
 const confettiLayer = document.getElementById("confetti-layer");
-const volumeSlider = document.getElementById("volume");
-const spkIcon = document.getElementById("spk-icon");
+const volRows = document.querySelectorAll(".vol-row");   // 음악/효과음 조절 줄 (인트로 + 설정 창)
+const introEl = document.getElementById("intro");
 const shakeToggle = document.getElementById("shake-toggle");
 const vibIcon = document.querySelector(".vib");
 const gameEl = document.querySelector(".game");
@@ -263,7 +264,8 @@ function formatTime(ms) {
 
 // ===== 소리 (파일 없이 브라우저에서 바로 만들어 냄) =====
 let audioCtx = null;
-let masterVolume = VOLUME_DEFAULT / 100;
+let sfxVolume = VOLUME_DEFAULT / 100;
+let musicVolume = MUSIC_VOLUME_DEFAULT / 100;
 let screenShake = SCREEN_SHAKE_DEFAULT;
 
 // 브라우저는 사용자가 한 번 눌러야 소리를 켜 줌
@@ -277,8 +279,8 @@ function initAudio() {
 
 // 음 하나 내기: 높이(Hz), 길이(초), 음색, 크기, 늦게 시작(초), 끝 높이
 function tone(freq, dur = 0.12, type = "sine", vol = 0.2, delay = 0, slideTo = null) {
-  if (masterVolume <= 0 || !audioCtx) return;
-  vol *= masterVolume;
+  if (sfxVolume <= 0 || !audioCtx) return;
+  vol *= sfxVolume;
   const t = audioCtx.currentTime + delay;
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
@@ -294,7 +296,7 @@ function tone(freq, dur = 0.12, type = "sine", vol = 0.2, delay = 0, slideTo = n
 
 // 폭발음: 지지직거리는 잡음을 낮게 걸러서 "콰광"
 function noise(dur = 0.5, vol = 0.4, cutoff = 900, delay = 0) {
-  if (masterVolume <= 0 || !audioCtx) return;
+  if (sfxVolume <= 0 || !audioCtx) return;
   const t = audioCtx.currentTime + delay;
   const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
   const data = buffer.getChannelData(0);
@@ -306,7 +308,7 @@ function noise(dur = 0.5, vol = 0.4, cutoff = 900, delay = 0) {
   filter.frequency.setValueAtTime(cutoff, t);
   filter.frequency.exponentialRampToValueAtTime(60, t + dur);
   const gain = audioCtx.createGain();
-  gain.gain.setValueAtTime(vol * masterVolume, t);
+  gain.gain.setValueAtTime(vol * sfxVolume, t);
   gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
   src.connect(filter).connect(gain).connect(audioCtx.destination);
   src.start(t);
@@ -402,14 +404,14 @@ function updateMusic() {
     bgmTrack = track;
     bgm.src = MUSIC_FILES[track];
   }
-  bgm.volume = Math.min(1, masterVolume * MUSIC_VOLUME);
-  const on = musicUnlocked && masterVolume > 0 && !document.hidden;
+  bgm.volume = Math.min(1, musicVolume * MUSIC_VOLUME);
+  const on = musicUnlocked && musicVolume > 0 && !document.hidden;
   const useSynth = SYNTH_MUSIC && missingTracks.has(track);
   if (on && !useSynth) bgm.play().catch(() => {});
   else bgm.pause();
   if (on && useSynth) startSynth(track % SONGS.length);
   else stopSynth();
-  if (musicGain) musicGain.gain.value = masterVolume * MUSIC_VOLUME * SYNTH_VOLUME;
+  if (musicGain) musicGain.gain.value = musicVolume * MUSIC_VOLUME * SYNTH_VOLUME;
 }
 
 // ----- 직접 만든 음악 (악기 소리를 코드로 합성) -----
@@ -617,7 +619,7 @@ function startSynth(index) {
     musicGain = audioCtx.createGain();
     musicGain.connect(audioCtx.destination);
   }
-  musicGain.gain.value = masterVolume * MUSIC_VOLUME * SYNTH_VOLUME;
+  musicGain.gain.value = musicVolume * MUSIC_VOLUME * SYNTH_VOLUME;
   if (synthTimer && synthPlaying === index) return;
   stopSynth();
   synthSong = buildSong(SONGS[index], index);
@@ -663,40 +665,72 @@ function updateBackground() {
   img.src = src;
 }
 
-// ===== 설정: 소리 슬라이더 + 흔들림 스위치 =====
+// ===== 설정: 음악 / 효과음 슬라이더 + 흔들림 스위치 =====
+// 조절 줄은 인트로 화면과 설정 창에 하나씩 있고, 둘이 같이 움직임
+const getVolume = (kind) => (kind === "music" ? musicVolume : sfxVolume);
+const lastVolume = { music: MUSIC_VOLUME_DEFAULT / 100, sfx: VOLUME_DEFAULT / 100 }; // 음소거 풀 때 돌아갈 크기
+
+function setVolume(kind, v) {
+  v = Math.min(1, Math.max(0, v));
+  if (kind === "music") musicVolume = v;
+  else sfxVolume = v;
+  if (v > 0) lastVolume[kind] = v;
+  updateSettingsUi();
+  updateMusic();
+}
+
 function updateSettingsUi() {
-  const v = Math.round(masterVolume * 100);
-  volumeSlider.value = v;
-  volumeSlider.style.setProperty("--val", v + "%");
-  spkIcon.dataset.level = v === 0 ? 0 : v < 45 ? 1 : 2;
+  volRows.forEach((row) => {
+    const kind = row.dataset.vol;
+    const v = Math.round(getVolume(kind) * 100);
+    const slider = row.querySelector(".volume-slider");
+    slider.value = v;
+    slider.style.setProperty("--val", v + "%");
+    row.querySelector(".spk").dataset.level = v === 0 ? 0 : v < 45 ? 1 : 2;
+    row.querySelector(".vol-btn").setAttribute("aria-pressed", v === 0);
+  });
   shakeToggle.checked = screenShake;
 }
 
 function saveSettings() {
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ volume: masterVolume, shake: screenShake }));
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ music: musicVolume, sfx: sfxVolume, shake: screenShake }));
   } catch (e) {}
 }
 
 function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem(SETTINGS_KEY));
-    if (s && typeof s.volume === "number") masterVolume = Math.min(1, Math.max(0, s.volume));
+    const clamp = (v) => Math.min(1, Math.max(0, v));
+    // 예전 기록은 소리 크기 하나(volume)만 있었음 → 음악과 효과음 둘 다 그 크기로
+    if (s && typeof s.volume === "number") musicVolume = sfxVolume = clamp(s.volume);
+    if (s && typeof s.music === "number") musicVolume = clamp(s.music);
+    if (s && typeof s.sfx === "number") sfxVolume = clamp(s.sfx);
     if (s && typeof s.shake === "boolean") screenShake = s.shake;
+    if (musicVolume > 0) lastVolume.music = musicVolume;
+    if (sfxVolume > 0) lastVolume.sfx = sfxVolume;
   } catch (e) {}
 }
 
-volumeSlider.addEventListener("input", () => {
-  initAudio();
-  masterVolume = volumeSlider.value / 100;
-  updateSettingsUi();
-  updateMusic();
-});
-
-// 손을 뗄 때 바뀐 크기로 한 번 들려주기
-volumeSlider.addEventListener("change", () => {
-  sfx.select();
-  saveSettings();
+volRows.forEach((row) => {
+  const kind = row.dataset.vol;
+  const slider = row.querySelector(".volume-slider");
+  slider.addEventListener("input", () => {
+    initAudio();
+    setVolume(kind, slider.value / 100);
+  });
+  // 손을 뗄 때 저장 (효과음은 바뀐 크기로 한 번 들려주기)
+  slider.addEventListener("change", () => {
+    if (kind === "sfx") sfx.select();
+    saveSettings();
+  });
+  // 아이콘 버튼: 누르면 끄기 / 다시 누르면 전 크기로
+  row.querySelector(".vol-btn").addEventListener("click", () => {
+    initAudio();
+    setVolume(kind, getVolume(kind) > 0 ? 0 : lastVolume[kind]);
+    if (kind === "sfx") sfx.select();
+    saveSettings();
+  });
 });
 
 shakeToggle.addEventListener("change", () => {
@@ -1924,6 +1958,21 @@ loadSettings();
 updateSettingsUi();
 preloadImages();
 cleared = loadCleared();
-// 테스트용: 주소 뒤에 ?stage=50 처럼 붙이면 그 스테이지로 바로 시작
+// 테스트용: 주소 뒤에 ?stage=50 처럼 붙이면 인트로 없이 그 스테이지로 바로 시작
 const testStage = parseInt(new URLSearchParams(location.search).get("stage"), 10);
-startStage(testStage >= 1 && testStage <= MAX_STAGE ? testStage : unlockedStage());
+if (testStage >= 1 && testStage <= MAX_STAGE) {
+  startStage(testStage);
+} else {
+  // 인트로 화면: 뒤에서 판을 미리 준비해 두고(음악 구간도 정해짐), START NOW를 누르면 보여줌
+  startStage(unlockedStage());
+  document.body.classList.add("intro-on");
+  introEl.classList.remove("hidden");
+}
+
+document.getElementById("start-btn").addEventListener("click", () => {
+  musicUnlocked = true;
+  initAudio();
+  introEl.classList.add("hidden");
+  document.body.classList.remove("intro-on");
+  startStage(stage.n); // 시작 안내와 소리를 지금 다시 보여주기
+});

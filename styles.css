@@ -1140,6 +1140,27 @@ body {
   border: 3px solid var(--wood-dark);
 }
 
+/* 음악/효과음 아이콘 버튼: 누르면 끄기 / 다시 누르면 켜기 */
+.vol-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+}
+
+.vol-btn:active { transform: scale(0.9); }
+
+.vol-row .setting-text { min-width: 66px; }
+
+/* 음표 아이콘은 끄면 빗금 */
+.spk.note .spk-x { stroke-width: 2.4; }
+
 .vib {
   width: 24px;
   height: 24px;
@@ -1309,3 +1330,79 @@ body {
 .stage-btn.open    { background: linear-gradient(180deg, var(--green-light), var(--green)); color: #fff; animation: heartbeat 1.2s infinite; }
 .stage-btn.locked  { background: #d7ccc8; color: #8d7b74; border-color: #a1887f; box-shadow: 0 3px 0 #a1887f; cursor: not-allowed; }
 .stage-btn.current { outline: 3px solid #fff; outline-offset: 2px; }
+
+/* ===== 인트로 화면: 배경 위에 제목 + START NOW + 소리 조절 ===== */
+body.intro-on .game { visibility: hidden; }
+
+.intro {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+  background: transparent;
+  text-align: center;
+}
+
+.intro-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-family: var(--font-display);
+  line-height: 0.95;
+  color: var(--cream);
+  -webkit-text-stroke: 8px var(--wood-dark);
+  paint-order: stroke fill;
+  text-shadow: 0 6px 0 var(--wood-dark), 0 12px 18px rgba(0, 0, 0, 0.35);
+  animation: intro-float 3s ease-in-out infinite;
+}
+
+.intro-small {
+  font-size: clamp(2.2rem, 11vw, 3.4rem);
+  letter-spacing: 1px;
+}
+
+.intro-big {
+  font-size: clamp(3.6rem, 20vw, 6rem);
+  color: var(--gold);
+}
+
+@keyframes intro-float {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50%      { transform: translateY(-8px) rotate(2deg); }
+}
+
+.intro-start {
+  width: min(100%, 280px);
+  min-height: 64px;
+  font-size: 1.7rem;
+  animation: intro-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes intro-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.06); }
+}
+
+.intro-sound {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(100%, 320px);
+}
+
+/* 투명 화면이라 조절 줄만 반투명 크림색 판으로 */
+.intro-sound .setting-row {
+  background: rgba(255, 246, 229, 0.85);
+  border: 2px solid var(--wood-dark);
+  box-shadow: 0 3px 0 var(--wood-dark);
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro-title, .intro-start { animation: none; }
+}
