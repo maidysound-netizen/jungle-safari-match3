@@ -1,5 +1,5 @@
 // ===== 스테이지 설정 (여기 숫자만 바꿔서 전체 난이도 조절) =====
-const MAX_STAGE = 100;
+const MAX_STAGE = 120;          // 화요일마다 20스테이지씩 늘어남 (EXPANSION.md 참고)
 const ANIMALS = ["🐶", "🐱", "🐰", "🐻", "🐼", "🦊", "🐸"];
 const POINT_PER_BLOCK = 10;     // 블록 1개당 점수
 
@@ -59,6 +59,9 @@ const TIME_MIN = 60;
 // 시간제한 목표 점수 = 제한 시간(초) x 초당 점수 (초당 점수는 스테이지마다 조금씩 올라감)
 const PPS_START = 6;
 const PPS_STEP = 0.12;
+// 100스테이지부터는 제한 시간이 더 줄지 않으니 초당 점수도 천천히만 올라감 (대신 트릭이 어려워짐)
+const PPS_SLOW_FROM = 100;
+const PPS_SLOW_STEP = 0.02;
 const WARNING_TIME = 30;        // 이 초 이하로 남으면 경고색
 
 // 30스테이지부터: ⏰ 시간 아이템 블록
@@ -86,12 +89,19 @@ const OBSTACLE_RULES = {
   vine:  { start: 15, base: 2, every: 10, max: 8,  name: "Vine" },
   rock:  { start: 25, base: 2, every: 15, max: 6,  name: "Rock" },
   moss:  { start: 40, base: 1, every: 25, max: 3,  name: "Moss" },
+  // ----- 101스테이지부터: 10스테이지마다 새 트릭 (EXPANSION.md에 전체 계획) -----
+  // - mud     진흙 웅덩이: 칸 바닥에 고정. 그 칸에서 블록이 터지면 닦임
+  // - coconut 코코넛 폭탄: 숫자가 이동마다 1씩 줄고 0이 되면 실패. 맞춰서 없애면 해제
+  mud:     { start: 101, base: 4, every: 2, max: 14, name: "Mud Puddle" },
+  coconut: { start: 111, base: 1, every: 4, max: 3,  name: "Coconut Bomb" },
 };
-const OB_TYPES = ["shell", "vine", "rock", "moss"];
+const OB_TYPES = ["shell", "vine", "rock", "moss", "mud", "coconut"];
 const SHELL_LAYERS_EVERY = 20;  // 껍질 최대 겹 수: 5~24스테이지 1겹, 25~44 2겹, 45~ 3겹
 const ROCK_HP = 2;
 const MOSS_MAX = 12;            // 이끼가 이 개수 이상이면 더 안 번짐
 const OBSTACLE_POINTS = 20;     // 장애물을 한 번 맞힐 때 점수
+const COCONUT_FUSE = 10;        // 코코넛 폭탄이 터지기까지 남은 이동 수
+const COCONUT_WARNING = 3;      // 이 이하로 남으면 빨갛게 깜빡임
 
 // ===== 소리 / 효과 설정 =====
 // 1) 소리 크기: 슬라이더 처음 위치 (0~100)
@@ -117,6 +127,7 @@ let stage = null;       // 지금 스테이지 정보 (getStage 결과)
 //   막힌 칸   { ob: "rock", hp } / { ob: "moss" }
 let board = [];
 let holes = [];         // holes[row][col] = true면 판에 없는 칸 (판 모양)
+let mud = [];           // mud[row][col] = true면 진흙 웅덩이 (블록이 움직여도 칸에 남음)
 let score = 0;
 let moves = 0;
 let timeLeft = 0;       // 남은 시간(ms)
@@ -165,7 +176,7 @@ const gameEl = document.querySelector(".game");
 // 동물별 파티클 색과 블록 바탕색 (ANIMALS 순서와 같음)
 const COLORS = ["#c8a27a", "#ffb74d", "#f8bbd0", "#8d6e63", "#90a4ae", "#ff7043", "#81c784"];
 const TILE_COLORS = ["#f3d9b1", "#ffd59e", "#fbd3e0", "#e0c2a2", "#dfe6ea", "#ffc4a3", "#cfe8b8"];
-const OB_COLORS = { shell: "#6aa84f", vine: "#4a7c2a", rock: "#8a8276", moss: "#7cb342" };
+const OB_COLORS = { shell: "#6aa84f", vine: "#4a7c2a", rock: "#8a8276", moss: "#7cb342", mud: "#8d5a2b", coconut: "#6d4c2f" };
 
 const wait = (ms) => new Promise((res) => setTimeout(res, ms));
 const randomAnimal = () => Math.floor(Math.random() * stage.animals);
@@ -186,8 +197,9 @@ const isObstacle = (b) => !!(b && (b.ob || b.shell));
 function obstaclePlan(n) {
   const types = OB_TYPES.filter((t) => n >= OBSTACLE_RULES[t].start);
   // 장애물 전, 그리고 새 맵 첫 스테이지(11, 21, …)는 쉬어가기
-  if (!types.length || (n % STAGES_PER_THEME === 1 && n > STAGES_PER_THEME)) return {};
+  if (!types.length) return {};
   const intro = types.find((t) => n === OBSTACLE_RULES[t].start);
+  if (!intro && n % STAGES_PER_THEME === 1 && n > STAGES_PER_THEME) return {};
   const plan = {};
   types.forEach((t, i) => {
     if (intro && t !== intro) return;                         // 처음 나오는 장애물은 그것만
@@ -204,9 +216,10 @@ function getStage(n) {
   const timed = n >= TIME_STAGE;
   const time = timed ? Math.max(TIME_MIN, TIME_START - (n - TIME_STAGE) * TIME_STEP) : 0;
   const target = timed
-    ? Math.round((time * (PPS_START + (n - TIME_STAGE) * PPS_STEP)) / 10) * 10
+    ? Math.round((time * (PPS_START + (Math.min(n, PPS_SLOW_FROM) - TIME_STAGE) * PPS_STEP +
+        Math.max(0, n - PPS_SLOW_FROM) * PPS_SLOW_STEP)) / 10) * 10
     : MOVE_TARGET_START + (n - 1) * MOVE_TARGET_STEP;
-  const theme = Math.min(THEME_NAMES.length - 1, Math.floor((n - 1) / STAGES_PER_THEME));
+  const theme = Math.floor((n - 1) / STAGES_PER_THEME) % THEME_NAMES.length; // 101부터 다시 1번 맵부터
   const shape = n < SHAPE_START ? "full" : SHAPES[n % SHAPES.length];
   const obstacles = obstaclePlan(n);
   const shellLayers = Math.min(3, 1 + Math.floor(Math.max(0, n - OBSTACLE_RULES.shell.start) / SHELL_LAYERS_EVERY));
@@ -864,13 +877,15 @@ function setStatus(text, type) {
 
 // 남은 장애물 개수
 function countObstacles() {
-  const count = { shell: 0, vine: 0, rock: 0, moss: 0 };
-  board.forEach((row) => row.forEach((b) => {
+  const count = { shell: 0, vine: 0, rock: 0, moss: 0, mud: 0, coconut: 0 };
+  board.forEach((row, r) => row.forEach((b, c) => {
+    if (mud[r] && mud[r][c]) count.mud++;
     if (!b) return;
     if (b.ob) count[b.ob]++;
     else {
       if (b.shell) count.shell++;
       if (b.vine) count.vine++;
+      if (b.fuse) count.coconut++;
     }
   }));
   return count;
@@ -975,6 +990,7 @@ function createBoard() {
 
 // 장애물을 빈 동물 칸에 골고루 흩어 놓기
 function placeObstacles() {
+  mud = board.map((row) => row.map(() => false));
   const spots = [];
   board.forEach((row, r) => row.forEach((b, c) => {
     if (b) spots.push({ r, c });
@@ -990,7 +1006,9 @@ function placeObstacles() {
       if (t === "shell") board[r][c].shell = 1 + Math.floor(Math.random() * stage.shellLayers);
       else if (t === "vine") board[r][c].vine = true;
       else if (t === "rock") board[r][c] = { ob: "rock", hp: ROCK_HP };
-      else board[r][c] = { ob: "moss" };
+      else if (t === "moss") board[r][c] = { ob: "moss" };
+      else if (t === "mud") mud[r][c] = true;
+      else board[r][c].fuse = COCONUT_FUSE;
     }
   });
 }
@@ -1043,6 +1061,11 @@ function render(dropped = new Set(), grown = new Set()) {
       cell.className = "cell";
       cell.dataset.r = r;
       cell.dataset.c = c;
+      if (mud[r][c]) {
+        const puddle = document.createElement("span");
+        puddle.className = "ob mud";
+        cell.appendChild(puddle);
+      }
       if (block && block.ob === "rock") {
         cell.classList.add("rock");
         if (block.hp < ROCK_HP) cell.classList.add("cracked");
@@ -1073,6 +1096,12 @@ function render(dropped = new Set(), grown = new Set()) {
           badge.className = "clock-badge";
           badge.textContent = "⏰";
           cell.appendChild(badge);
+        }
+        if (block.fuse) {
+          const nut = document.createElement("span");
+          nut.className = "coconut-badge" + (block.fuse <= COCONUT_WARNING ? " danger" : "");
+          nut.textContent = block.fuse;
+          cell.appendChild(nut);
         }
         if (block.vine) {
           const vine = document.createElement("span");
@@ -1281,7 +1310,7 @@ function obstacleEffects(hits) {
   hits.forEach((h) => burst(h.r, h.c, OB_COLORS[h.type], 1, true));
   if (hits.some((h) => h.type === "rock")) sfx.rock();
   if (hits.some((h) => h.type === "shell")) sfx.crack();
-  if (hits.some((h) => h.type === "moss")) sfx.squish();
+  if (hits.some((h) => h.type === "moss" || h.type === "mud")) sfx.squish();
 }
 
 // 이끼 번지기: 이번 이동에서 이끼를 하나도 못 없앴으면 옆 블록 하나가 이끼가 됨
@@ -1297,7 +1326,7 @@ function spreadMoss() {
         const nr = r + dr, nc = c + dc;
         if (nr < 0 || nc < 0 || nr >= size || nc >= size) return;
         const b = board[nr][nc];
-        if (isAnimal(b) && !b.special && !b.shell) targets.push({ r: nr, c: nc });
+        if (isAnimal(b) && !b.special && !b.shell && !b.fuse) targets.push({ r: nr, c: nc });
       });
     }
   }
@@ -1353,6 +1382,13 @@ async function resolveBoard(startClear = null, focus = null) {
         }
       });
     });
+    // 블록이 터지는 칸의 진흙은 닦임 (특수 블록이 생기는 칸 포함)
+    near.forEach((k) => {
+      const [r, c] = parseKey(k);
+      if (!mud[r][c]) return;
+      mud[r][c] = false;
+      hits.push({ r, c, type: "mud", gone: true });
+    });
 
     const gained = clear.size * POINT_PER_BLOCK * combo + hits.length * OBSTACLE_POINTS;
     score += gained;
@@ -1372,6 +1408,7 @@ async function resolveBoard(startClear = null, focus = null) {
     let sumX = 0, sumY = 0;
     let clockCount = 0;
     let vineCount = 0;
+    let defused = 0;
     clear.forEach((k) => {
       const [r, c] = parseKey(k);
       const b = board[r][c];
@@ -1381,6 +1418,10 @@ async function resolveBoard(startClear = null, focus = null) {
       sumX += pos.x;
       sumY += pos.y;
       if (b.vine) vineCount++;
+      if (b.fuse) {
+        defused++;
+        floatScore(pos.x, pos.y - 20, "Defused!", "special");
+      }
       // ⏰ 아이템을 맞추면 시간 추가
       if (b.clock) {
         clockCount++;
@@ -1388,6 +1429,7 @@ async function resolveBoard(startClear = null, focus = null) {
       }
     });
     if (vineCount) sfx.snap();
+    if (defused) sfx.make();
     if (clear.size > 0) floatScore(sumX / clear.size, sumY / clear.size, "+" + gained);
 
     // 특수 블록이 생기는 자리에 이름 띄우기
@@ -1508,6 +1550,7 @@ async function trySwap(a, b) {
     await wait(450);
   }
 
+  if (await tickCoconuts()) return;
   if (checkEnd()) return;
 
   if (!hasPossibleMove()) {
@@ -1523,6 +1566,28 @@ async function trySwap(a, b) {
     setStatus(hasSpecial ? "Swap a special block to blast it!" : "Tap a block to swap", "ready");
   }
   busy = false;
+}
+
+// 코코넛 폭탄: 이동이 끝날 때마다 숫자가 1씩 줄고, 0이 되면 실패
+async function tickCoconuts() {
+  let boom = null;
+  board.forEach((row, r) => row.forEach((b, c) => {
+    if (!isAnimal(b) || !b.fuse) return;
+    b.fuse--;
+    if (b.fuse <= 0 && !boom) boom = { r, c };
+  }));
+  if (!boom) {
+    render();
+    return false;
+  }
+  render();
+  burst(boom.r, boom.c, OB_COLORS.coconut, 4, false);
+  sfx.rock();
+  flash();
+  shakeScreen(true);
+  await wait(500);
+  endGame(false, "coconut");
+  return true;
 }
 
 // 못 움직이는 칸을 건드렸을 때 알려주기
@@ -1559,7 +1624,7 @@ function checkEnd() {
   return false;
 }
 
-function endGame(win) {
+function endGame(win, reason = null) {
   gameOver = true;
   busy = true;
   stopTimer();
@@ -1574,17 +1639,20 @@ function endGame(win) {
     const allClear = n === MAX_STAGE;
     setStatus(allClear ? "All stages cleared! 🏆" : `Stage ${n} clear! 🎉`, "win");
     emojiEl.textContent = allClear ? "🏆" : "🎉";
-    titleEl.textContent = allClear ? "ALL 100 CLEARED!" : `STAGE ${n} CLEAR!`;
+    titleEl.textContent = allClear ? `ALL ${MAX_STAGE} CLEARED!` : `STAGE ${n} CLEAR!`;
     textEl.innerHTML = `Score <b>${score}</b> / Goal ${stage.target}<br>${left}`;
     nextBtn.classList.toggle("hidden", allClear);
     againBtn.textContent = "PLAY AGAIN";
     againBtn.className = allClear ? "btn btn-primary" : "btn btn-secondary";
   } else {
     const obLeft = obstaclesLeft();
-    setStatus(stage.timed ? "Time's up… Failed" : "Out of moves… Failed", "lose");
+    setStatus(
+      reason === "coconut" ? "A coconut bomb went off… Failed" :
+      stage.timed ? "Time's up… Failed" : "Out of moves… Failed", "lose");
     emojiEl.textContent = "😢";
     titleEl.textContent = `STAGE ${n} FAILED`;
     const reasons = [];
+    if (reason === "coconut") reasons.push("A coconut bomb went off 💥");
     if (score < stage.target) reasons.push(`${stage.target - score} points short`);
     if (obLeft > 0) reasons.push(`${obLeft} obstacle${obLeft > 1 ? "s" : ""} left`);
     textEl.innerHTML = `Score <b>${score}</b> / Goal ${stage.target}<br>${reasons.join(" · ")}`;
@@ -1751,6 +1819,8 @@ const OB_INTRO = {
   vine: "New! 🌿 Vines — match the tied block",
   rock: "New! 🪨 Rocks — hit them twice or blast",
   moss: "New! 🌱 Moss spreads — clear it fast",
+  mud: "New trick! 🟤 Mud — pop blocks on it to clean",
+  coconut: "New trick! 🥥 Coconut Bomb — match it before 0",
 };
 
 function stageIntro(prev) {
