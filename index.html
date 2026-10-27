@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Jungle Safari Match 3</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Lilita+One&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- 정글/사파리 추상 배경 -->
+  <div class="jungle-bg" id="jungle-bg" data-theme="0" aria-hidden="true">
+    <svg viewBox="0 0 400 800" preserveAspectRatio="xMidYMid slice">
+      <defs>
+        <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" style="stop-color: var(--sky1)"/>
+          <stop offset="0.5" style="stop-color: var(--sky2)"/>
+          <stop offset="1" style="stop-color: var(--sky3)"/>
+        </linearGradient>
+        <radialGradient id="sun-glow">
+          <stop offset="0" style="stop-color: var(--glow)"/>
+          <stop offset="1" style="stop-color: var(--glow); stop-opacity: 0"/>
+        </radialGradient>
+        <path id="leaf" d="M0 0 C30 -46 110 -52 150 0 C110 52 30 46 0 0 Z"/>
+        <path id="rib" d="M6 0 H140"/>
+      </defs>
+
+      <rect width="400" height="800" fill="url(#sky)"/>
+      <!-- 해 -->
+      <circle cx="255" cy="300" r="180" fill="url(#sun-glow)"/>
+      <circle class="bg-sun" cx="255" cy="300" r="72"/>
+      <!-- 먼 언덕과 아카시아 나무 -->
+      <path d="M0 470 Q80 420 160 455 T320 440 T400 450 V800 H0Z" class="bg-hill1"/>
+      <g class="bg-tree">
+        <path d="M318 452 L321 396 L325 452Z"/>
+        <ellipse cx="321" cy="394" rx="44" ry="9"/>
+        <ellipse cx="297" cy="401" rx="18" ry="5"/>
+        <path d="M72 470 L74 430 L77 470Z"/>
+        <ellipse cx="74" cy="428" rx="26" ry="6"/>
+      </g>
+      <path d="M0 525 Q100 480 210 515 T400 505 V800 H0Z" class="bg-hill2"/>
+      <!-- 풀밭 -->
+      <path class="bg-ground1" d="M0 605 Q120 560 240 600 T400 585 V800 H0Z"/>
+      <path class="bg-ground2" d="M0 690 Q140 645 260 690 T400 668 V800 H0Z"/>
+      <!-- 반짝이는 점 -->
+      <g class="bg-dots">
+        <circle cx="60" cy="300" r="3"/><circle cx="120" cy="230" r="2"/>
+        <circle cx="360" cy="200" r="2.5"/><circle cx="180" cy="380" r="2"/>
+        <circle cx="340" cy="520" r="2"/><circle cx="40" cy="560" r="2.5"/>
+      </g>
+      <!-- 위쪽 정글 잎 -->
+      <g>
+        <use href="#leaf" class="bg-leaf1" transform="translate(-40 30) rotate(28) scale(1.4)"/>
+        <use href="#leaf" class="bg-leaf2" transform="translate(-30 -10) rotate(8) scale(1.1)"/>
+        <use href="#leaf" class="bg-leaf4" transform="translate(-20 110) rotate(45) scale(0.9)"/>
+        <use href="#leaf" class="bg-leaf3" transform="translate(440 20) rotate(150) scale(1.4)"/>
+        <use href="#leaf" class="bg-leaf2" transform="translate(430 -20) rotate(172) scale(1.1)"/>
+        <use href="#leaf" class="bg-leaf4" transform="translate(420 120) rotate(135) scale(0.85)"/>
+        <g class="bg-rib">
+          <use href="#rib" transform="translate(-40 30) rotate(28) scale(1.4)"/>
+          <use href="#rib" transform="translate(440 20) rotate(150) scale(1.4)"/>
+        </g>
+      </g>
+      <!-- 아래쪽 정글 잎 -->
+      <g>
+        <use href="#leaf" class="bg-leaf3" transform="translate(-30 800) rotate(-40) scale(1.5)"/>
+        <use href="#leaf" class="bg-leaf2" transform="translate(-10 760) rotate(-15) scale(1.0)"/>
+        <use href="#leaf" class="bg-leaf3" transform="translate(430 800) rotate(-140) scale(1.5)"/>
+        <use href="#leaf" class="bg-leaf4" transform="translate(420 750) rotate(-165) scale(1.0)"/>
+      </g>
+    </svg>
+    <!-- backgrounds 폴더에 그림이 있으면 위 그림 대신 이 층에 보임 -->
+    <div class="bg-photo" id="bg-photo"></div>
+  </div>
+
+  <main class="game">
+    <h1 class="sr-only">Jungle Safari Match 3</h1>
+
+    <!-- 위쪽 한 줄: 설정 / 스테이지 / 스테이지 목록 -->
+    <header class="topbar">
+      <button class="icon-btn" id="settings-btn" type="button" aria-label="Settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84a.47.47 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87a.47.47 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.48.48 0 0 0-.12-.61l-2.01-1.58zM12 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2z"/></svg>
+      </button>
+      <div class="stage-title">
+        <div class="stage-label" id="stage-label">STAGE 1</div>
+        <div class="stage-info" id="stage-info"></div>
+      </div>
+      <button class="icon-btn" id="menu-btn" type="button" aria-label="Choose stage">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg>
+      </button>
+    </header>
+
+    <!-- 점수판 하나: 남은 이동/시간 + 점수와 진행도 + 장애물 목표 -->
+    <section class="hud panel">
+      <div class="limit" id="limit-box">
+        <span class="limit-value" id="limit-value">0</span>
+        <span class="limit-label" id="limit-label">MOVES</span>
+      </div>
+      <div class="score-area">
+        <div class="score-row">
+          <span class="score" id="score">0</span>
+          <span class="target">/ <span id="target">0</span></span>
+        </div>
+        <div class="progress" aria-hidden="true">
+          <div class="progress-bar" id="progress-bar"></div>
+        </div>
+        <!-- 장애물 목표: 남은 장애물 개수 (장애물 스테이지에서만 보임) -->
+        <div class="goals hidden" id="goals"></div>
+      </div>
+    </section>
+
+    <!-- 게임판 (나무 틀) -->
+    <div class="board-wrap" id="board-wrap">
+      <div class="board" id="board"></div>
+      <!-- 파티클, 점수 팝업, 연쇄 문구가 그려지는 층 -->
+      <div class="fx-layer" id="fx-layer"></div>
+    </div>
+
+    <!-- 현재 상태 (색 점 + 문구) -->
+    <p class="status status-ready" id="status" role="status" aria-live="polite">Tap a block to start</p>
+  </main>
+
+  <!-- 설정 창: 소리 슬라이더 + 흔들림 스위치 + 다시 시작 -->
+  <div class="overlay hidden" id="settings">
+    <div class="panel sheet">
+      <div class="sheet-head">
+        <h2>Settings</h2>
+        <button class="close-btn" id="settings-close-btn" type="button" aria-label="Close">✕</button>
+      </div>
+      <label class="setting-row">
+        <svg class="spk" id="spk-icon" viewBox="0 0 24 24" data-level="2" aria-hidden="true">
+          <path class="spk-body" d="M3 9.5h3.5L11 5.5v13l-4.5-4H3a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1z"/>
+          <path class="spk-w1" d="M14.5 9a4 4 0 0 1 0 6"/>
+          <path class="spk-w2" d="M17.5 6.5a7.5 7.5 0 0 1 0 11"/>
+          <path class="spk-x" d="M15 9.5l5 5M20 9.5l-5 5"/>
+        </svg>
+        <span class="setting-text">Sound</span>
+        <input class="volume-slider" id="volume" type="range" min="0" max="100" value="80" aria-label="Volume">
+      </label>
+      <label class="setting-row switch">
+        <svg class="vib" viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="8" y="4" width="8" height="16" rx="2"/>
+          <path d="M4.5 8.5 3 10l1.5 1.5L3 13l1.5 1.5M19.5 8.5 21 10l-1.5 1.5L21 13l-1.5 1.5"/>
+        </svg>
+        <span class="setting-text">Screen shake</span>
+        <input id="shake-toggle" type="checkbox" checked>
+        <span class="track"><span class="thumb"></span></span>
+      </label>
+      <button class="btn btn-primary" id="resume-btn" type="button">RESUME</button>
+      <button class="btn btn-secondary" id="restart-btn" type="button">RESTART STAGE</button>
+    </div>
+  </div>
+
+  <!-- 결과 창 -->
+  <div class="overlay hidden" id="result">
+    <div class="panel result-box">
+      <h2 class="ribbon result-title" id="result-title">CLEAR!</h2>
+      <div class="result-emoji" id="result-emoji">🎉</div>
+      <p class="result-text" id="result-text"></p>
+      <button class="btn btn-primary" id="next-btn" type="button">NEXT STAGE ▶</button>
+      <button class="btn btn-secondary" id="again-btn" type="button">PLAY AGAIN</button>
+      <button class="btn btn-link" id="result-menu-btn" type="button">Choose stage</button>
+    </div>
+  </div>
+
+  <!-- 스테이지 선택 창 -->
+  <div class="overlay hidden" id="stage-select">
+    <div class="panel select-box">
+      <div class="sheet-head">
+        <h2>Choose Stage</h2>
+        <button class="close-btn" id="select-close-btn" type="button" aria-label="Close">✕</button>
+      </div>
+      <p class="select-progress" id="select-progress"></p>
+      <details class="help">
+        <summary>How to play</summary>
+        <p class="select-legend">Stage 20+: ⏱ time limit · Stage 30+: ⏰ time items</p>
+        <div class="special-help">
+          <span><b class="mini sp-line-h"></b>4 in a row → Line Bomb</span>
+          <span><b class="mini sp-bomb"></b>Row + column at once → Bomb</span>
+          <span><b class="mini sp-super"></b>5 in a row → Super Bomb</span>
+          <span><b class="mini sq"></b>2×2 square → clears 4</span>
+        </div>
+        <div class="special-help">
+          <span><b class="mini ob-shell"></b>Leaf Shell: match next to it to peel (1–3 layers)</span>
+          <span><b class="mini ob-vine"></b>Vine: can't be swapped, match it to cut</span>
+          <span><b class="mini ob-rock"></b>Rock: match next to it twice, or blast it</span>
+          <span><b class="mini ob-moss"></b>Moss: spreads every move, match next to it</span>
+        </div>
+      </details>
+      <div class="stage-grid" id="stage-grid"></div>
+      <button class="btn btn-link" id="reset-btn" type="button">Reset progress</button>
+    </div>
+  </div>
+
+  <!-- 꽃가루 효과 층 -->
+  <div class="confetti-layer" id="confetti-layer"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>
