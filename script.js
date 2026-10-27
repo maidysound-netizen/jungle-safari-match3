@@ -649,6 +649,12 @@ document.addEventListener("pointerdown", () => {
 });
 document.addEventListener("visibilitychange", updateMusic);
 
+// 휴대폰에서 꾹 누르거나 끌 때 글자 선택(파란 막)과 길게 누르기 메뉴 막기 (슬라이더는 그대로)
+const isInput = (e) => e.target.closest && e.target.closest("input");
+document.addEventListener("selectstart", (e) => { if (!isInput(e)) e.preventDefault(); });
+document.addEventListener("contextmenu", (e) => { if (!isInput(e)) e.preventDefault(); });
+document.addEventListener("dragstart", (e) => e.preventDefault());
+
 // ===== 배경 그림 (backgrounds 폴더의 파일, 없으면 기본 그림 배경) =====
 const bgPhoto = document.getElementById("bg-photo");
 
