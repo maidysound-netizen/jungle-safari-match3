@@ -1,5 +1,5 @@
 // ===== 스테이지 설정 (여기 숫자만 바꿔서 전체 난이도 조절) =====
-const MAX_STAGE = 120;          // 화요일마다 20스테이지씩 늘어남 (EXPANSION.md 참고)
+const MAX_STAGE = 140;         // 화요일마다 20스테이지씩 늘어남 (EXPANSION.md 참고)
 const ANIMALS = ["🐶", "🐱", "🐰", "🐻", "🐼", "🦊", "🐸"];
 const POINT_PER_BLOCK = 10;     // 블록 1개당 점수
 
@@ -94,14 +94,20 @@ const OBSTACLE_RULES = {
   // - coconut 코코넛 폭탄: 숫자가 이동마다 1씩 줄고 0이 되면 실패. 맞춰서 없애면 해제
   mud:     { start: 101, base: 4, every: 2, max: 14, name: "Mud Puddle" },
   coconut: { start: 111, base: 1, every: 4, max: 3,  name: "Coconut Bomb" },
+  // - egg     잃어버린 알: 맞출 수 없고 블록처럼 떨어짐. 자기 줄 맨 아래 칸에 닿으면 모음 (개수 = 모을 알 수)
+  // - river   강물: 표시된 줄의 블록이 이동마다 오른쪽으로 한 칸씩 흘러감 (개수 = 줄 수, 부술 필요 없음)
+  egg:     { start: 121, base: 2, every: 5, max: 4,  name: "Lost Egg" },
+  river:   { start: 131, base: 1, every: 10, max: 2, name: "River Current", goal: false },
 };
-const OB_TYPES = ["shell", "vine", "rock", "moss", "mud", "coconut"];
+const OB_TYPES = ["shell", "vine", "rock", "moss", "mud", "coconut", "egg", "river"];
 const SHELL_LAYERS_EVERY = 20;  // 껍질 최대 겹 수: 5~24스테이지 1겹, 25~44 2겹, 45~ 3겹
 const ROCK_HP = 2;
 const MOSS_MAX = 12;            // 이끼가 이 개수 이상이면 더 안 번짐
 const OBSTACLE_POINTS = 20;     // 장애물을 한 번 맞힐 때 점수
 const COCONUT_FUSE = 10;        // 코코넛 폭탄이 터지기까지 남은 이동 수
 const COCONUT_WARNING = 3;      // 이 이하로 남으면 빨갛게 깜빡임
+const EGG_ON_BOARD = 2;         // 판 위에 한 번에 있을 수 있는 알 수 (모으면 위에서 새로 떨어짐)
+const EGG_CHANCE = 0.12;        // 새 블록이 알이 될 확률 (아직 모을 알이 남았을 때)
 
 // ===== 소리 / 효과 설정 =====
 // 1) 소리 크기: 슬라이더 처음 위치 (0~100). 음악과 효과음을 따로 조절
@@ -129,6 +135,9 @@ let stage = null;       // 지금 스테이지 정보 (getStage 결과)
 let board = [];
 let holes = [];         // holes[row][col] = true면 판에 없는 칸 (판 모양)
 let mud = [];           // mud[row][col] = true면 진흙 웅덩이 (블록이 움직여도 칸에 남음)
+let river = [];         // 강물이 흐르는 줄 번호들
+let eggsSpawned = 0;    // 이번 스테이지에 나온 알 개수
+let eggsCollected = 0;  // 모은 알 개수
 let score = 0;
 let moves = 0;
 let timeLeft = 0;       // 남은 시간(ms)
@@ -177,7 +186,7 @@ const gameEl = document.querySelector(".game");
 // 동물별 파티클 색과 블록 바탕색 (ANIMALS 순서와 같음)
 const COLORS = ["#c8a27a", "#ffb74d", "#f8bbd0", "#8d6e63", "#90a4ae", "#ff7043", "#81c784"];
 const TILE_COLORS = ["#f3d9b1", "#ffd59e", "#fbd3e0", "#e0c2a2", "#dfe6ea", "#ffc4a3", "#cfe8b8"];
-const OB_COLORS = { shell: "#6aa84f", vine: "#4a7c2a", rock: "#8a8276", moss: "#7cb342", mud: "#8d5a2b", coconut: "#6d4c2f" };
+const OB_COLORS = { shell: "#6aa84f", vine: "#4a7c2a", rock: "#8a8276", moss: "#7cb342", mud: "#8d5a2b", coconut: "#6d4c2f", egg: "#fff3c4", river: "#4fc3f7" };
 
 const wait = (ms) => new Promise((res) => setTimeout(res, ms));
 const randomAnimal = () => Math.floor(Math.random() * stage.animals);
@@ -189,8 +198,8 @@ const isHole = (r, c) => holes[r][c];
 const isFixed = (b) => !!(b && b.ob);                   // 바위, 이끼
 const isAnimal = (b) => !!(b && !b.ob);
 const canSwap = (b) => isAnimal(b) && !b.shell && !b.vine;
-// 맞추기에 쓰이는 그림 번호 (껍질에 싸였거나 슈퍼봄이면 null)
-const kindOf = (b) => (isAnimal(b) && !b.shell && b.special !== "super" ? b.a : null);
+// 맞추기에 쓰이는 그림 번호 (껍질에 싸였거나 슈퍼봄, 알이면 null)
+const kindOf = (b) => (isAnimal(b) && !b.shell && !b.egg && b.special !== "super" ? b.a : null);
 // 장애물이 남아 있는 칸인지 (덩굴은 블록째 사라지므로 따로 셈)
 const isObstacle = (b) => !!(b && (b.ob || b.shell));
 
@@ -917,7 +926,9 @@ function setStatus(text, type) {
 
 // 남은 장애물 개수
 function countObstacles() {
-  const count = { shell: 0, vine: 0, rock: 0, moss: 0, mud: 0, coconut: 0 };
+  const count = { shell: 0, vine: 0, rock: 0, moss: 0, mud: 0, coconut: 0, river: 0 };
+  // 알은 판 위 개수가 아니라 "아직 못 모은 알" 수
+  count.egg = Math.max(0, (stage.obstacles.egg || 0) - eggsCollected);
   board.forEach((row, r) => row.forEach((b, c) => {
     if (mud[r] && mud[r][c]) count.mud++;
     if (!b) return;
@@ -941,6 +952,7 @@ function updateGoals() {
   const count = countObstacles();
   goalsEl.innerHTML = "";
   OB_TYPES.forEach((t) => {
+    if (OBSTACLE_RULES[t].goal === false) return;           // 강물처럼 부술 필요 없는 트릭은 목표에 안 나옴
     if (!(t in stage.obstacles) && count[t] === 0) return;
     const el = document.createElement("span");
     el.className = "goal" + (count[t] === 0 ? " done" : "");
@@ -948,7 +960,7 @@ function updateGoals() {
     el.title = OBSTACLE_RULES[t].name;
     goalsEl.appendChild(el);
   });
-  goalsEl.classList.remove("hidden");
+  goalsEl.classList.toggle("hidden", !goalsEl.children.length);
 }
 
 function updateHud() {
@@ -1040,7 +1052,24 @@ function placeObstacles() {
     [spots[i], spots[j]] = [spots[j], spots[i]];
   }
   const plan = stage.obstacles;
+  river = [];
+  eggsSpawned = 0;
+  eggsCollected = 0;
   OB_TYPES.forEach((t) => {
+    if (t === "river") {
+      river = pickRiverRows(plan.river || 0);
+      return;
+    }
+    if (t === "egg") {
+      // 알은 판 위쪽 절반에만 (맨 아래에 바로 닿지 않게)
+      for (let i = 0; i < Math.min(plan.egg || 0, EGG_ON_BOARD); i++) {
+        const idx = spots.findIndex((p) => p.r < Math.floor(stage.size / 2));
+        if (idx < 0) break;
+        const { r, c } = spots.splice(idx, 1)[0];
+        board[r][c] = eggBlock();
+      }
+      return;
+    }
     for (let i = 0; i < (plan[t] || 0) && spots.length; i++) {
       const { r, c } = spots.pop();
       if (t === "shell") board[r][c].shell = 1 + Math.floor(Math.random() * stage.shellLayers);
@@ -1053,18 +1082,38 @@ function placeObstacles() {
   });
 }
 
-// 새로 떨어지는 블록: 아이템 스테이지면 가끔 ⏰가 붙어서 나옴
+// 강물 줄 고르기: 판 너비의 절반 이상이 칸인 줄 중에서 무작위
+function pickRiverRows(n) {
+  const rows = [];
+  for (let r = 0; r < stage.size; r++) {
+    if (holes[r].filter((h) => !h).length >= Math.max(3, Math.ceil(stage.size / 2))) rows.push(r);
+  }
+  for (let i = rows.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [rows[i], rows[j]] = [rows[j], rows[i]];
+  }
+  return rows.slice(0, n).sort((a, b) => a - b);
+}
+
+function eggBlock() {
+  eggsSpawned++;
+  return { a: -1, egg: true, clock: false, special: null, shell: 0, vine: false };
+}
+
+// 새로 떨어지는 블록: 아이템 스테이지면 가끔 ⏰가 붙어서 나옴, 알 스테이지면 가끔 알이 나옴
 function newBlock() {
+  const eggs = stage.obstacles.egg || 0;
+  if (eggsSpawned < eggs && eggsSpawned - eggsCollected < EGG_ON_BOARD && Math.random() < EGG_CHANCE) return eggBlock();
   const clock = stage.items && clocksMade < ITEM_MAX && Math.random() < ITEM_CHANCE;
   if (clock) clocksMade++;
   return { a: randomAnimal(), clock, special: null, shell: 0, vine: false };
 }
 
-// 맞출 곳이 없을 때: 움직일 수 있는 블록끼리 섞기 (장애물은 그대로)
+// 맞출 곳이 없을 때: 움직일 수 있는 블록끼리 섞기 (장애물과 알은 그대로)
 function shuffleBoard() {
   const spots = [];
   board.forEach((row, r) => row.forEach((b, c) => {
-    if (canSwap(b)) spots.push({ r, c });
+    if (canSwap(b) && !b.egg) spots.push({ r, c });
   }));
   const blocks = spots.map((p) => board[p.r][p.c]);
   for (let tries = 0; tries < 200; tries++) {
@@ -1084,7 +1133,7 @@ function shuffleBoard() {
   }
 }
 
-function render(dropped = new Set(), grown = new Set()) {
+function render(dropped = new Set(), grown = new Set(), flowed = new Set()) {
   const size = stage.size;
   boardEl.innerHTML = "";
   for (let r = 0; r < size; r++) {
@@ -1101,6 +1150,8 @@ function render(dropped = new Set(), grown = new Set()) {
       cell.className = "cell";
       cell.dataset.r = r;
       cell.dataset.c = c;
+      if (river.includes(r)) cell.classList.add("river");
+      if (flowed.has(key(r, c))) cell.classList.add("flow");
       if (mud[r][c]) {
         const puddle = document.createElement("span");
         puddle.className = "ob mud";
@@ -1114,6 +1165,10 @@ function render(dropped = new Set(), grown = new Set()) {
         cell.classList.add("moss");
         if (grown.has(key(r, c))) cell.classList.add("grow");
         cell.setAttribute("aria-label", "Moss");
+      } else if (block && block.egg) {
+        cell.classList.add("egg");
+        cell.append("🥚");
+        cell.setAttribute("aria-label", "Lost Egg");
       } else if (block) {
         if (block.special === "super") {
           cell.textContent = "🌟";
@@ -1154,6 +1209,12 @@ function render(dropped = new Set(), grown = new Set()) {
           shell.dataset.n = block.shell;
           cell.appendChild(shell);
         }
+      }
+      if (river.includes(r) && !isFixed(block)) {
+        const arrow = document.createElement("span");
+        arrow.className = "river-arrow";
+        arrow.textContent = "›";
+        cell.appendChild(arrow);
       }
       if (selected && selected.r === r && selected.c === c) cell.classList.add("selected");
       if (dropped.has(key(r, c))) cell.classList.add("drop");
@@ -1366,7 +1427,7 @@ function spreadMoss() {
         const nr = r + dr, nc = c + dc;
         if (nr < 0 || nc < 0 || nr >= size || nc >= size) return;
         const b = board[nr][nc];
-        if (isAnimal(b) && !b.special && !b.shell && !b.fuse) targets.push({ r: nr, c: nc });
+        if (isAnimal(b) && !b.special && !b.shell && !b.fuse && !b.egg) targets.push({ r: nr, c: nc });
       });
     }
   }
@@ -1399,8 +1460,8 @@ async function resolveBoard(startClear = null, focus = null) {
     [...clear].forEach((k) => {
       const [r, c] = parseKey(k);
       const b = board[r][c];
-      if (!b) {
-        clear.delete(k);
+      if (!b || b.egg) {
+        clear.delete(k);                                     // 알은 폭발에도 안 깨짐
       } else if (isObstacle(b)) {
         clear.delete(k);
         hitDone.add(k);
@@ -1515,8 +1576,57 @@ async function resolveBoard(startClear = null, focus = null) {
     dropBlocks();
     sfx.drop();
     await wait(280);
+    await gatherEggs();
   }
   setGlow(0);
+}
+
+// 잃어버린 알: 자기 줄 맨 아래 칸(구멍 제외)에 닿은 알을 모으고, 빈 칸은 다시 채움
+async function gatherEggs() {
+  const size = stage.size;
+  while (true) {
+    const got = [];
+    for (let c = 0; c < size; c++) {
+      let r = size - 1;
+      while (r >= 0 && isHole(r, c)) r--;
+      if (r >= 0 && isAnimal(board[r][c]) && board[r][c].egg) got.push({ r, c });
+    }
+    if (!got.length) return;
+    got.forEach(({ r, c }) => {
+      cellEl(r, c).classList.add("matched");
+      burst(r, c, OB_COLORS.egg, 2, false);
+      const pos = cellCenter(r, c);
+      floatScore(pos.x, pos.y - 20, "Egg saved! 🥚", "special");
+    });
+    eggsCollected += got.length;
+    score += got.length * OBSTACLE_POINTS;
+    sfx.make();
+    setStatus(`Egg saved! 🥚 +${got.length * OBSTACLE_POINTS}`, "busy");
+    updateHud();
+    updateGoals();
+    await wait(350);
+    got.forEach(({ r, c }) => (board[r][c] = null));
+    dropBlocks();
+    await wait(280);
+  }
+}
+
+// 강물: 표시된 줄의 블록이 오른쪽으로 한 칸씩 흘러감 (맨 오른쪽은 맨 왼쪽으로, 고정 칸과 구멍은 그대로)
+function flowRiver() {
+  const moved = new Set();
+  river.forEach((r) => {
+    const cols = [];
+    for (let c = 0; c < stage.size; c++) {
+      if (!isHole(r, c) && !isFixed(board[r][c])) cols.push(c);
+    }
+    if (cols.length < 2) return;
+    const blocks = cols.map((c) => board[r][c]);
+    cols.forEach((c, i) => {
+      board[r][c] = blocks[(i - 1 + cols.length) % cols.length];
+      moved.add(key(r, c));
+    });
+  });
+  return moved;
 }
 
 // 중력: 바위/이끼는 그 자리에 고정. 고정 칸 사이 구간마다 아래로 내리고 위에서 새로 채움
@@ -1588,6 +1698,16 @@ async function trySwap(a, b) {
     setStatus("The moss is spreading! 🌱", "fail");
     updateGoals();
     await wait(450);
+  }
+
+  // 강물 흐르기: 흘러서 맞춰지면 그대로 터짐
+  if (river.length) {
+    render(new Set(), new Set(), flowRiver());
+    sfx.swap();
+    setStatus("The river flows ➡️", "busy");
+    await wait(320);
+    await gatherEggs();
+    if (findMatches().size) await resolveBoard();
   }
 
   if (await tickCoconuts()) return;
@@ -1861,6 +1981,8 @@ const OB_INTRO = {
   moss: "New! 🌱 Moss spreads — clear it fast",
   mud: "New trick! 🟤 Mud — pop blocks on it to clean",
   coconut: "New trick! 🥥 Coconut Bomb — match it before 0",
+  egg: "New trick! 🥚 Lost Eggs — bring them to the bottom",
+  river: "New trick! 🌊 River — the row slides right each move",
 };
 
 function stageIntro(prev) {
@@ -1912,7 +2034,7 @@ function startStage(n) {
     // 아이템 스테이지는 ⏰ 하나를 처음부터 보여줌
     const spots = [];
     board.forEach((row, r) => row.forEach((b, c) => {
-      if (canSwap(b)) spots.push({ r, c });
+      if (canSwap(b) && !b.egg) spots.push({ r, c });
     }));
     const p = spots[Math.floor(Math.random() * spots.length)];
     if (p) board[p.r][p.c].clock = true;

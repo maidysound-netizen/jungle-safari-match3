@@ -7,7 +7,7 @@ Earlier tricks keep appearing in later stages, so difficulty keeps stacking.
 | Run | Date | Stages | New tricks | Status |
 |---|---|---|---|---|
 | 1 | 2026-10-27 | 101–120 | 101 Mud Puddle · 111 Coconut Bomb | done |
-| 2 | 2026-11-03 | 121–140 | 121 Lost Egg · 131 River Current | pending |
+| 2 | 2026-11-03 | 121–140 | 121 Lost Egg · 131 River Current | done |
 | 3 | 2026-11-10 | 141–160 | 141 Fog · 151 Monkey Thief | pending |
 | 4 | 2026-11-17 | 161–180 | 161 Totem · 171 Chameleon | pending |
 | 5 | 2026-11-24 | 181–200 | 181 Turtle Shell · 191 Volcano Boss | pending |

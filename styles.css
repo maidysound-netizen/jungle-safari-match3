@@ -350,7 +350,8 @@ img {
 /* 장애물 목표 */
 .goals {
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;          /* 목표가 많으면 다음 줄로 (좁은 폰 화면) */
+  gap: 2px 12px;
   font-family: var(--font-display);
   font-size: 1rem;
   color: var(--wood-dark);
@@ -605,6 +606,47 @@ img {
   50% { transform: scale(1.25); }
 }
 
+/* 잃어버린 알: 맞출 수 없고, 맨 아래 칸에 닿으면 모음 */
+.cell.egg {
+  background:
+    radial-gradient(circle at 30% 30%, #fffdf3, #fff3c4 55%, #f5d98c);
+  box-shadow: inset 0 0 0 2px #e6b84c, inset 0 -4px 0 rgba(0, 0, 0, 0.12), 0 2px 2px rgba(0, 0, 0, 0.25);
+  animation: egg-wobble 1.6s ease-in-out infinite;
+}
+
+@keyframes egg-wobble {
+  0%, 70%, 100% { transform: rotate(0); }
+  80% { transform: rotate(-8deg); }
+  90% { transform: rotate(8deg); }
+}
+
+/* 강물 줄: 물결 무늬 + 오른쪽 화살표 */
+.cell.river {
+  box-shadow: inset 0 0 0 3px rgba(41, 151, 214, 0.75), inset 0 -4px 0 rgba(0, 0, 0, 0.14), 0 2px 2px rgba(0, 0, 0, 0.25);
+}
+
+.river-arrow {
+  position: absolute;
+  z-index: 2;
+  right: 1px;
+  bottom: -2px;
+  font-family: var(--font-display);
+  font-size: 0.45em;
+  color: #fff;
+  -webkit-text-stroke: 3px #1e88e5;
+  paint-order: stroke fill;
+  pointer-events: none;
+}
+
+.cell.flow {
+  animation: flow 0.3s ease-out;
+}
+
+@keyframes flow {
+  from { transform: translateX(-60%); opacity: 0.4; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+
 /* 바위 */
 .cell.rock {
   background: radial-gradient(circle at 35% 30%, #d6d0c4, #8a8276 60%, #5f584e);
@@ -722,6 +764,8 @@ img {
 .mini.ob-moss  { background: radial-gradient(circle at 30% 30%, #9ccc65 0 25%, transparent 26%), #33691e; }
 .mini.ob-mud   { background: radial-gradient(ellipse 80% 45% at 50% 75%, #6e421e 0 60%, transparent 62%), #f3d9b1; }
 .mini.ob-coconut { background: radial-gradient(circle at 35% 30%, #a1775a, #5d3a1f 70%); border: 2px solid #3b2412; }
+.mini.ob-egg   { background: radial-gradient(circle at 30% 30%, #fffdf3, #f5d98c); border: 2px solid #e6b84c; border-radius: 50% 50% 45% 45% / 60% 60% 40% 40%; }
+.mini.ob-river { background: repeating-linear-gradient(90deg, #81d4fa 0 25%, #29b6f6 25% 50%); border: 2px solid #1e88e5; }
 .mini.sq       { background: conic-gradient(#fbd3e0 0 25%, #f3d9b1 0 50%, #fbd3e0 0 75%, #f3d9b1 0); }
 
 /* ===== 효과 ===== */
