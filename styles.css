@@ -647,6 +647,47 @@ img {
   to   { transform: translateX(0); opacity: 1; }
 }
 
+/* 안개: 블록을 "?"로 가림. 옆에서 매치가 터지면 걷힘 */
+.ob.fog {
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(ellipse 55% 35% at 30% 35%, rgba(255, 255, 255, 0.9), transparent 70%),
+    radial-gradient(ellipse 60% 40% at 72% 68%, rgba(255, 255, 255, 0.8), transparent 70%),
+    linear-gradient(160deg, #eceff1, #b0bec5);
+  box-shadow: inset 0 0 0 2px rgba(120, 144, 156, 0.85);
+  font-family: var(--font-display);
+  font-size: 0.6em;
+  color: #fff;
+  -webkit-text-stroke: 3px #78909c;
+  paint-order: stroke fill;
+  animation: fog-drift 3s ease-in-out infinite;
+}
+
+@keyframes fog-drift {
+  50% { background-position: 6% 0, -6% 0, 0 0; opacity: 0.92; }
+}
+
+/* 원숭이 도둑: 바뀐 두 칸이 흔들림 */
+.cell.monkey {
+  animation: monkey-swap 0.6s ease-in-out;
+  box-shadow: inset 0 0 0 3px #8d6e63, 0 0 10px rgba(141, 110, 99, 0.9);
+}
+
+@keyframes monkey-swap {
+  0%, 100% { transform: rotate(0) scale(1); }
+  25% { transform: rotate(-12deg) scale(1.1); }
+  75% { transform: rotate(12deg) scale(1.1); }
+}
+
+.goal.info { color: #6d4c41; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ob.fog, .cell.monkey { animation: none; }
+}
+
 /* 바위 */
 .cell.rock {
   background: radial-gradient(circle at 35% 30%, #d6d0c4, #8a8276 60%, #5f584e);
@@ -766,6 +807,9 @@ img {
 .mini.ob-coconut { background: radial-gradient(circle at 35% 30%, #a1775a, #5d3a1f 70%); border: 2px solid #3b2412; }
 .mini.ob-egg   { background: radial-gradient(circle at 30% 30%, #fffdf3, #f5d98c); border: 2px solid #e6b84c; border-radius: 50% 50% 45% 45% / 60% 60% 40% 40%; }
 .mini.ob-river { background: repeating-linear-gradient(90deg, #81d4fa 0 25%, #29b6f6 25% 50%); border: 2px solid #1e88e5; }
+.mini.ob-fog   { background: radial-gradient(ellipse 60% 40% at 35% 35%, #fff, transparent 70%), linear-gradient(160deg, #eceff1, #90a4ae); border: 2px solid #78909c; }
+.mini.ob-monkey { background: #d7ccc8; border: 2px solid #8d6e63; }
+.mini.ob-monkey::after { content: "🐒"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; }
 .mini.sq       { background: conic-gradient(#fbd3e0 0 25%, #f3d9b1 0 50%, #fbd3e0 0 75%, #f3d9b1 0); }
 
 /* ===== 효과 ===== */

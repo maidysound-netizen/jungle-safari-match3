@@ -1,5 +1,5 @@
 // ===== 스테이지 설정 (여기 숫자만 바꿔서 전체 난이도 조절) =====
-const MAX_STAGE = 140;         // 화요일마다 20스테이지씩 늘어남 (EXPANSION.md 참고)
+const MAX_STAGE = 160;         // 화요일마다 20스테이지씩 늘어남 (EXPANSION.md 참고)
 const ANIMALS = ["🐶", "🐱", "🐰", "🐻", "🐼", "🦊", "🐸"];
 const POINT_PER_BLOCK = 10;     // 블록 1개당 점수
 
@@ -98,8 +98,12 @@ const OBSTACLE_RULES = {
   // - river   강물: 표시된 줄의 블록이 이동마다 오른쪽으로 한 칸씩 흘러감 (개수 = 줄 수, 부술 필요 없음)
   egg:     { start: 121, base: 2, every: 5, max: 4,  name: "Lost Egg" },
   river:   { start: 131, base: 1, every: 10, max: 2, name: "River Current", goal: false },
+  // - fog     안개: 블록이 "?"로 가려지고 못 움직임. 옆에서 매치가 터지면 걷힘 (그 블록도 맞추기에는 쓰임)
+  // - monkey  원숭이 도둑: MONKEY_EVERY번 이동마다 블록 두 개를 몰래 바꿈 (개수 = 한 번에 바꾸는 쌍 수, 부술 필요 없음)
+  fog:     { start: 141, base: 4, every: 2, max: 12, name: "Fog" },
+  monkey:  { start: 151, base: 1, every: 10, max: 2, name: "Monkey Thief", goal: false },
 };
-const OB_TYPES = ["shell", "vine", "rock", "moss", "mud", "coconut", "egg", "river"];
+const OB_TYPES = ["shell", "vine", "rock", "moss", "mud", "coconut", "egg", "river", "fog", "monkey"];
 const SHELL_LAYERS_EVERY = 20;  // 껍질 최대 겹 수: 5~24스테이지 1겹, 25~44 2겹, 45~ 3겹
 const ROCK_HP = 2;
 const MOSS_MAX = 12;            // 이끼가 이 개수 이상이면 더 안 번짐
@@ -108,6 +112,7 @@ const COCONUT_FUSE = 10;        // 코코넛 폭탄이 터지기까지 남은 �
 const COCONUT_WARNING = 3;      // 이 이하로 남으면 빨갛게 깜빡임
 const EGG_ON_BOARD = 2;         // 판 위에 한 번에 있을 수 있는 알 수 (모으면 위에서 새로 떨어짐)
 const EGG_CHANCE = 0.12;        // 새 블록이 알이 될 확률 (아직 모을 알이 남았을 때)
+const MONKEY_EVERY = 4;         // 원숭이가 이 이동 수마다 블록을 바꿈
 
 // ===== 소리 / 효과 설정 =====
 // 1) 소리 크기: 슬라이더 처음 위치 (0~100). 음악과 효과음을 따로 조절
@@ -138,6 +143,7 @@ let mud = [];           // mud[row][col] = true면 진흙 웅덩이 (블록이 �
 let river = [];         // 강물이 흐르는 줄 번호들
 let eggsSpawned = 0;    // 이번 스테이지에 나온 알 개수
 let eggsCollected = 0;  // 모은 알 개수
+let monkeyMoves = 0;    // 원숭이 도둑: 이번 스테이지에서 한 이동 수
 let score = 0;
 let moves = 0;
 let timeLeft = 0;       // 남은 시간(ms)
@@ -186,7 +192,7 @@ const gameEl = document.querySelector(".game");
 // 동물별 파티클 색과 블록 바탕색 (ANIMALS 순서와 같음)
 const COLORS = ["#c8a27a", "#ffb74d", "#f8bbd0", "#8d6e63", "#90a4ae", "#ff7043", "#81c784"];
 const TILE_COLORS = ["#f3d9b1", "#ffd59e", "#fbd3e0", "#e0c2a2", "#dfe6ea", "#ffc4a3", "#cfe8b8"];
-const OB_COLORS = { shell: "#6aa84f", vine: "#4a7c2a", rock: "#8a8276", moss: "#7cb342", mud: "#8d5a2b", coconut: "#6d4c2f", egg: "#fff3c4", river: "#4fc3f7" };
+const OB_COLORS = { shell: "#6aa84f", vine: "#4a7c2a", rock: "#8a8276", moss: "#7cb342", mud: "#8d5a2b", coconut: "#6d4c2f", egg: "#fff3c4", river: "#4fc3f7", fog: "#cfd8dc", monkey: "#a1887f" };
 
 const wait = (ms) => new Promise((res) => setTimeout(res, ms));
 const randomAnimal = () => Math.floor(Math.random() * stage.animals);
@@ -197,7 +203,7 @@ const parseKey = (k) => k.split(",").map(Number);
 const isHole = (r, c) => holes[r][c];
 const isFixed = (b) => !!(b && b.ob);                   // 바위, 이끼
 const isAnimal = (b) => !!(b && !b.ob);
-const canSwap = (b) => isAnimal(b) && !b.shell && !b.vine;
+const canSwap = (b) => isAnimal(b) && !b.shell && !b.vine && !b.fog;
 // 맞추기에 쓰이는 그림 번호 (껍질에 싸였거나 슈퍼봄, 알이면 null)
 const kindOf = (b) => (isAnimal(b) && !b.shell && !b.egg && b.special !== "super" ? b.a : null);
 // 장애물이 남아 있는 칸인지 (덩굴은 블록째 사라지므로 따로 셈)
@@ -926,7 +932,7 @@ function setStatus(text, type) {
 
 // 남은 장애물 개수
 function countObstacles() {
-  const count = { shell: 0, vine: 0, rock: 0, moss: 0, mud: 0, coconut: 0, river: 0 };
+  const count = { shell: 0, vine: 0, rock: 0, moss: 0, mud: 0, coconut: 0, river: 0, fog: 0, monkey: 0 };
   // 알은 판 위 개수가 아니라 "아직 못 모은 알" 수
   count.egg = Math.max(0, (stage.obstacles.egg || 0) - eggsCollected);
   board.forEach((row, r) => row.forEach((b, c) => {
@@ -937,6 +943,7 @@ function countObstacles() {
       if (b.shell) count.shell++;
       if (b.vine) count.vine++;
       if (b.fuse) count.coconut++;
+      if (b.fog) count.fog++;
     }
   }));
   return count;
@@ -952,6 +959,14 @@ function updateGoals() {
   const count = countObstacles();
   goalsEl.innerHTML = "";
   OB_TYPES.forEach((t) => {
+    if (t === "monkey" && stage.obstacles.monkey) {         // 원숭이는 목표 대신 "다음 장난까지 남은 이동 수"
+      const el = document.createElement("span");
+      el.className = "goal info";
+      el.innerHTML = `<b class="mini ob-monkey"></b>${monkeyLeft()}`;
+      el.title = `${OBSTACLE_RULES.monkey.name}: swaps blocks in ${monkeyLeft()} move(s)`;
+      goalsEl.appendChild(el);
+      return;
+    }
     if (OBSTACLE_RULES[t].goal === false) return;           // 강물처럼 부술 필요 없는 트릭은 목표에 안 나옴
     if (!(t in stage.obstacles) && count[t] === 0) return;
     const el = document.createElement("span");
@@ -1055,7 +1070,9 @@ function placeObstacles() {
   river = [];
   eggsSpawned = 0;
   eggsCollected = 0;
+  monkeyMoves = 0;
   OB_TYPES.forEach((t) => {
+    if (t === "monkey") return;                               // 원숭이는 판에 놓지 않음
     if (t === "river") {
       river = pickRiverRows(plan.river || 0);
       return;
@@ -1077,6 +1094,7 @@ function placeObstacles() {
       else if (t === "rock") board[r][c] = { ob: "rock", hp: ROCK_HP };
       else if (t === "moss") board[r][c] = { ob: "moss" };
       else if (t === "mud") mud[r][c] = true;
+      else if (t === "fog") board[r][c].fog = true;
       else board[r][c].fuse = COCONUT_FUSE;
     }
   });
@@ -1165,6 +1183,13 @@ function render(dropped = new Set(), grown = new Set(), flowed = new Set()) {
         cell.classList.add("moss");
         if (grown.has(key(r, c))) cell.classList.add("grow");
         cell.setAttribute("aria-label", "Moss");
+      } else if (block && block.fog) {
+        cell.classList.add("fog");
+        const fog = document.createElement("span");
+        fog.className = "ob fog";
+        fog.textContent = "?";
+        cell.appendChild(fog);
+        cell.setAttribute("aria-label", "Fog");
       } else if (block && block.egg) {
         cell.classList.add("egg");
         cell.append("🥚");
@@ -1412,6 +1437,7 @@ function obstacleEffects(hits) {
   if (hits.some((h) => h.type === "rock")) sfx.rock();
   if (hits.some((h) => h.type === "shell")) sfx.crack();
   if (hits.some((h) => h.type === "moss" || h.type === "mud")) sfx.squish();
+  if (hits.some((h) => h.type === "fog")) sfx.spread();
 }
 
 // 이끼 번지기: 이번 이동에서 이끼를 하나도 못 없앴으면 옆 블록 하나가 이끼가 됨
@@ -1427,7 +1453,7 @@ function spreadMoss() {
         const nr = r + dr, nc = c + dc;
         if (nr < 0 || nc < 0 || nr >= size || nc >= size) return;
         const b = board[nr][nc];
-        if (isAnimal(b) && !b.special && !b.shell && !b.fuse && !b.egg) targets.push({ r: nr, c: nc });
+        if (isAnimal(b) && !b.special && !b.shell && !b.fuse && !b.egg && !b.fog) targets.push({ r: nr, c: nc });
       });
     }
   }
@@ -1481,6 +1507,18 @@ async function resolveBoard(startClear = null, focus = null) {
           hitDone.add(nk);
           hitObstacle(nr, nc, false, hits);
         }
+      });
+    });
+    // 지워지는 칸 바로 옆(상하좌우)의 안개는 걷힘
+    near.forEach((k) => {
+      const [r, c] = parseKey(k);
+      [[0, 1], [1, 0], [0, -1], [-1, 0]].forEach(([dr, dc]) => {
+        const nr = r + dr, nc = c + dc;
+        if (nr < 0 || nc < 0 || nr >= size || nc >= size || clear.has(key(nr, nc))) return;
+        const b = board[nr][nc];
+        if (!isAnimal(b) || !b.fog) return;
+        b.fog = false;
+        hits.push({ r: nr, c: nc, type: "fog", gone: true });
       });
     });
     // 블록이 터지는 칸의 진흙은 닦임 (특수 블록이 생기는 칸 포함)
@@ -1710,6 +1748,13 @@ async function trySwap(a, b) {
     if (findMatches().size) await resolveBoard();
   }
 
+  // 원숭이 도둑: MONKEY_EVERY번 이동마다 블록을 몰래 바꿈 (매치는 안 생기게)
+  if (stage.obstacles.monkey) {
+    monkeyMoves++;
+    if (monkeyMoves % MONKEY_EVERY === 0) await monkeySteal(stage.obstacles.monkey);
+    updateGoals();
+  }
+
   if (await tickCoconuts()) return;
   if (checkEnd()) return;
 
@@ -1726,6 +1771,42 @@ async function trySwap(a, b) {
     setStatus(hasSpecial ? "Swap a special block to blast it!" : "Tap a block to swap", "ready");
   }
   busy = false;
+}
+
+// 원숭이가 다음에 장난치기까지 남은 이동 수
+const monkeyLeft = () => MONKEY_EVERY - (monkeyMoves % MONKEY_EVERY);
+
+// 원숭이 도둑: 움직일 수 있는 블록 두 개를 바꿈 (그림이 다르고, 바꿔도 매치가 안 생기는 쌍만)
+async function monkeySteal(pairs) {
+  const spots = [];
+  board.forEach((row, r) => row.forEach((b, c) => {
+    if (canSwap(b) && !b.egg && kindOf(b) !== null) spots.push({ r, c });
+  }));
+  const swapped = [];
+  for (let p = 0; p < pairs; p++) {
+    for (let tries = 0; tries < 100; tries++) {
+      const a = spots[Math.floor(Math.random() * spots.length)];
+      const b = spots[Math.floor(Math.random() * spots.length)];
+      if (!a || !b || board[a.r][a.c].a === board[b.r][b.c].a) continue;
+      if (swapped.some((q) => key(q.r, q.c) === key(a.r, a.c) || key(q.r, q.c) === key(b.r, b.c))) continue;
+      swap(a, b);
+      if (findMatches().size === 0) {
+        swapped.push(a, b);
+        break;
+      }
+      swap(a, b);
+    }
+  }
+  if (!swapped.length) return;
+  render();
+  swapped.forEach(({ r, c }) => {
+    cellEl(r, c).classList.add("monkey");
+    const pos = cellCenter(r, c);
+    floatScore(pos.x, pos.y - 20, "🐒", "special");
+  });
+  sfx.swap();
+  setStatus("A monkey swapped some blocks! 🐒", "fail");
+  await wait(650);
 }
 
 // 코코넛 폭탄: 이동이 끝날 때마다 숫자가 1씩 줄고, 0이 되면 실패
@@ -1756,12 +1837,13 @@ const STUCK_TEXT = {
   vine: "Tied up in vines! Match it where it is",
   rock: "A rock! Match next to it or blast it",
   moss: "Moss! Match next to it to clear it",
+  fog: "Foggy! Match next to it to clear the fog",
 };
 
 function stuckFeedback(pos) {
   const b = board[pos.r][pos.c];
   if (!b) return;
-  const type = b.ob || (b.shell ? "shell" : "vine");
+  const type = b.ob || (b.shell ? "shell" : b.fog ? "fog" : "vine");
   setStatus(STUCK_TEXT[type], "fail");
   sfx.stuck();
   const el = cellEl(pos.r, pos.c);
@@ -1983,6 +2065,8 @@ const OB_INTRO = {
   coconut: "New trick! 🥥 Coconut Bomb — match it before 0",
   egg: "New trick! 🥚 Lost Eggs — bring them to the bottom",
   river: "New trick! 🌊 River — the row slides right each move",
+  fog: "New trick! 🌫️ Fog — match next to ? to clear it",
+  monkey: "New trick! 🐒 Monkey Thief — swaps blocks every 4 moves",
 };
 
 function stageIntro(prev) {
